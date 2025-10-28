@@ -1,27 +1,39 @@
 use clap::{Arg, Command};
 use regex::Regex;
-use reqwest;
-use serde_json::Value;
+use reqwest::{Client, StatusCode};
+use serde::Deserialize;
 use std::fs;
 use std::io::copy;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio;
 use tokio::sync::{Mutex, Semaphore};
 use zip::ZipArchive;
 
+const MAX_RETRIES: u32 = 3;
+const RETRY_DELAY_MS: u64 = 1000;
+const GITHUB_API_BASE: &str = "https://api.github.com";
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let matches = Command::new("magnet")
-        .version("1.0")
-        .author("Nima Naseri")
+        .version("2.0")
+        .author("Nima Naseri <nerdnull@proton.me>")
         .about("Industrial strength GitHub repository scraper")
         .arg(
             Arg::new("username")
                 .help("GitHub username to scrape repositories from")
                 .required(true)
                 .index(1),
+        )
+        .arg(
+            Arg::new("token")
+                .long("token")
+                .short('t')
+                .help("GitHub personal access token (avoids rate limits)")
+                .value_name("TOKEN")
+                .env("GITHUB_TOKEN"),
         )
         .arg(
             Arg::new("language")
@@ -72,6 +84,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .get_matches();
 
     let username = matches.get_one::<String>("username").unwrap();
+    let token = matches.get_one::<String>("token");
     let language_filter = matches.get_one::<String>("language");
     let min_stars = matches.get_one::<u32>("min-stars").unwrap_or(&0);
     let max_size = matches.get_one::<u32>("max-size");
@@ -94,10 +107,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     fs::create_dir_all(username)?;
 
     let start_time = Instant::now();
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(300))
-        .user_agent("curl/8.4.0")
-        .build()?;
+    let scraper = Scraper::new(token.cloned())?;
 
     println!("Scanning repositories for: {}", username);
 
@@ -122,9 +132,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     println!("Parallel: {}", parallel_count);
+    if token.is_none() {
+        println!("WARNING: No GitHub token provided - API rate limits apply");
+    }
     println!();
 
-    let repos = fetch_all_repos(&client, username).await?;
+    let repos = scraper.fetch_all_repos(username).await?;
     let filtered_repos = filter_repos(
         repos,
         language_filter,
@@ -148,18 +161,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let progress = Arc::new(ProgressTracker::new(filtered_repos.len()));
     let semaphore = Arc::new(Semaphore::new(parallel_count));
+    let scraper = Arc::new(scraper);
     let mut tasks = Vec::new();
 
     for repo in filtered_repos {
-        let client = client.clone();
+        let scraper = scraper.clone();
         let username = username.clone();
         let progress = progress.clone();
         let semaphore = semaphore.clone();
 
         let task = tokio::spawn(async move {
             let _permit = semaphore.acquire().await.unwrap();
-            let result = download_repo(&client, &repo, &username).await;
-            progress.report_completion(repo.name, result).await;
+            let result = scraper.download_repo(&repo, &username).await;
+            progress.report_completion(repo.name.clone(), result).await;
         });
 
         tasks.push(task);
@@ -244,65 +258,206 @@ impl ProgressTracker {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Deserialize)]
 struct RepoInfo {
     name: String,
     html_url: String,
     language: Option<String>,
+    #[serde(rename = "stargazers_count")]
     stars: u32,
     size: u32,
+    #[serde(rename = "fork")]
     is_fork: bool,
+    default_branch: String,
 }
 
-async fn fetch_all_repos(
-    client: &reqwest::Client,
-    username: &str,
-) -> Result<Vec<RepoInfo>, Box<dyn std::error::Error>> {
-    let mut repos = Vec::new();
-    let mut page = 1;
+#[derive(Deserialize)]
+struct RateLimitResponse {
+    rate: RateLimit,
+}
 
-    loop {
-        let url = format!(
-            "https://api.github.com/users/{}/repos?per_page=100&page={}",
-            username, page
-        );
+#[derive(Deserialize)]
+struct RateLimit {
+    remaining: u32,
+}
 
-        let response = client
-            .get(&url)
-            .header("Accept", "application/vnd.github.v3+json")
-            .header("X-GitHub-Media-Type", "github.v3")
-            .send()
-            .await?;
+struct Scraper {
+    client: Client,
+    token: Option<String>,
+}
 
-        if !response.status().is_success() {
-            return Err(format!("GitHub API error: {}", response.status()).into());
+impl Scraper {
+    fn new(token: Option<String>) -> Result<Self, Box<dyn std::error::Error>> {
+        let mut headers = reqwest::header::HeaderMap::new();
+        headers.insert("Accept", "application/vnd.github.v3+json".parse().unwrap());
+        headers.insert("User-Agent", "magnet/2.0".parse().unwrap());
+
+        if let Some(ref token) = token {
+            headers.insert(
+                "Authorization",
+                format!("Bearer {}", token).parse().unwrap(),
+            );
         }
 
-        let data: Value = response.json().await?;
+        let client = Client::builder()
+            .timeout(Duration::from_secs(300))
+            .default_headers(headers)
+            .build()?;
 
-        if let Some(repos_array) = data.as_array() {
-            if repos_array.is_empty() {
+        Ok(Self { client, token })
+    }
+
+    async fn fetch_all_repos(&self, username: &str) -> Result<Vec<RepoInfo>, String> {
+        let mut repos = Vec::new();
+        let mut page = 1;
+
+        loop {
+            let url = format!(
+                "{}/users/{}/repos?per_page=100&page={}",
+                GITHUB_API_BASE, username, page
+            );
+
+            let response = self.retry_request(|| self.client.get(&url).send()).await?;
+
+            if !response.status().is_success() {
+                return Err(format!("GitHub API error: {}", response.status()));
+            }
+
+            let data: Vec<RepoInfo> = response.json().await.map_err(|e| e.to_string())?;
+
+            if data.is_empty() {
                 break;
             }
 
-            for repo in repos_array {
-                repos.push(RepoInfo {
-                    name: repo["name"].as_str().unwrap_or("unknown").to_string(),
-                    html_url: repo["html_url"].as_str().unwrap_or("").to_string(),
-                    language: repo["language"].as_str().map(|s| s.to_string()),
-                    stars: repo["stargazers_count"].as_u64().unwrap_or(0) as u32,
-                    size: repo["size"].as_u64().unwrap_or(0) as u32,
-                    is_fork: repo["fork"].as_bool().unwrap_or(false),
-                });
-            }
-
+            repos.extend(data);
             page += 1;
-        } else {
-            break;
+        }
+
+        if self.token.is_none() {
+            self.check_rate_limit().await.ok();
+        }
+
+        Ok(repos)
+    }
+
+    async fn check_rate_limit(&self) -> Result<(), String> {
+        let url = format!("{}/rate_limit", GITHUB_API_BASE);
+        let response = self
+            .client
+            .get(&url)
+            .send()
+            .await
+            .map_err(|e| e.to_string())?;
+
+        if response.status().is_success() {
+            let data: RateLimitResponse = response.json().await.map_err(|e| e.to_string())?;
+            if data.rate.remaining < 10 {
+                eprintln!(
+                    "WARNING: GitHub API rate limit low: {} remaining",
+                    data.rate.remaining
+                );
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn retry_request<F, Fut>(&self, mut request_fn: F) -> Result<reqwest::Response, String>
+    where
+        F: FnMut() -> Fut,
+        Fut: std::future::Future<Output = Result<reqwest::Response, reqwest::Error>>,
+    {
+        let mut last_error = None;
+
+        for attempt in 0..MAX_RETRIES {
+            match request_fn().await {
+                Ok(response) => {
+                    if response.status().is_success() || response.status() == StatusCode::NOT_FOUND
+                    {
+                        return Ok(response);
+                    }
+
+                    if response.status() == StatusCode::FORBIDDEN
+                        || response.status() == StatusCode::TOO_MANY_REQUESTS
+                    {
+                        tokio::time::sleep(Duration::from_millis(
+                            RETRY_DELAY_MS * 2_u64.pow(attempt),
+                        ))
+                        .await;
+                        continue;
+                    }
+
+                    return Ok(response);
+                }
+                Err(e) => {
+                    last_error = Some(e);
+                    if attempt < MAX_RETRIES - 1 {
+                        tokio::time::sleep(Duration::from_millis(
+                            RETRY_DELAY_MS * 2_u64.pow(attempt),
+                        ))
+                        .await;
+                    }
+                }
+            }
+        }
+
+        Err(last_error.unwrap().to_string())
+    }
+
+    async fn download_repo(&self, repo: &RepoInfo, username: &str) -> Result<u64, String> {
+        let repo_path = Path::new(username).join(&repo.name);
+
+        if repo_path.exists() {
+            if let Ok(size) = get_dir_size(&repo_path) {
+                return Ok(size);
+            }
+        }
+
+        let branch = &repo.default_branch;
+        let zip_url = format!("{}/archive/refs/heads/{}.zip", repo.html_url, branch);
+
+        match self.download_and_extract(&zip_url, &repo_path).await {
+            Ok(size) => Ok(size),
+            Err(e) => {
+                let fallback_branches = ["main", "master", "develop", "trunk"];
+                for fallback in &fallback_branches {
+                    if *fallback == branch {
+                        continue;
+                    }
+
+                    let fallback_url =
+                        format!("{}/archive/refs/heads/{}.zip", repo.html_url, fallback);
+
+                    if let Ok(size) = self.download_and_extract(&fallback_url, &repo_path).await {
+                        return Ok(size);
+                    }
+                }
+
+                Err(format!("Failed to download: {}", e))
+            }
         }
     }
 
-    Ok(repos)
+    async fn download_and_extract(&self, url: &str, repo_path: &Path) -> Result<u64, String> {
+        let response = self.retry_request(|| self.client.get(url).send()).await?;
+
+        if !response.status().is_success() {
+            return Err(format!("HTTP {}", response.status()));
+        }
+
+        let bytes = response.bytes().await.map_err(|e| e.to_string())?;
+        let zip_file = format!("{}.zip", repo_path.to_string_lossy());
+
+        fs::write(&zip_file, &bytes).map_err(|e| e.to_string())?;
+
+        let result = extract_zip(&zip_file, repo_path);
+        fs::remove_file(&zip_file).ok();
+
+        match result {
+            Ok(_) => Ok(get_dir_size(repo_path).unwrap_or(0)),
+            Err(e) => Err(e.to_string()),
+        }
+    }
 }
 
 fn filter_repos(
@@ -352,58 +507,6 @@ fn filter_repos(
         .collect()
 }
 
-async fn download_repo(
-    client: &reqwest::Client,
-    repo: &RepoInfo,
-    username: &str,
-) -> Result<u64, String> {
-    let repo_path = Path::new(username).join(&repo.name);
-
-    if repo_path.exists() {
-        if let Ok(size) = get_dir_size(&repo_path) {
-            return Ok(size);
-        }
-    }
-
-    let branches = ["main", "master", "develop", "trunk"];
-
-    for branch in &branches {
-        let zip_url = format!("{}/archive/refs/heads/{}.zip", repo.html_url, branch);
-
-        match download_and_extract(client, &zip_url, &repo_path).await {
-            Ok(size) => return Ok(size),
-            Err(_) => continue,
-        }
-    }
-
-    Err("All branches failed".to_string())
-}
-
-async fn download_and_extract(
-    client: &reqwest::Client,
-    url: &str,
-    repo_path: &Path,
-) -> Result<u64, Box<dyn std::error::Error>> {
-    let response = client.get(url).send().await?;
-
-    if !response.status().is_success() {
-        return Err("Download failed".into());
-    }
-
-    let bytes = response.bytes().await?;
-    let zip_file = format!("{}.zip", repo_path.to_string_lossy());
-
-    fs::write(&zip_file, &bytes)?;
-
-    let result = extract_zip(&zip_file, repo_path);
-    fs::remove_file(&zip_file).ok();
-
-    match result {
-        Ok(_) => Ok(get_dir_size(repo_path).unwrap_or(0)),
-        Err(e) => Err(e),
-    }
-}
-
 fn extract_zip(zip_path: &str, repo_path: &Path) -> Result<(), Box<dyn std::error::Error>> {
     let file = fs::File::open(zip_path)?;
     let mut archive = ZipArchive::new(file)?;
@@ -417,7 +520,7 @@ fn extract_zip(zip_path: &str, repo_path: &Path) -> Result<(), Box<dyn std::erro
 
         let components: Vec<_> = outpath.components().collect();
         let outpath = if components.len() > 1 {
-            repo_path.join(components[1..].iter().collect::<std::path::PathBuf>())
+            repo_path.join(components[1..].iter().collect::<PathBuf>())
         } else {
             continue;
         };
