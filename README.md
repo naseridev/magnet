@@ -1,4 +1,3 @@
-```markdown
 # Magnet: Industrial Strength GitHub Repository Scraper
 
 **Magnet** is a high-performance, parallel GitHub repository scraper designed for critical scenarios requiring rapid, large-scale repository acquisition and analysis. Built with Rust's async capabilities, Magnet provides robust, fault-tolerant repository collection with advanced filtering and concurrent download mechanisms.
@@ -323,4 +322,3 @@ This tool is designed for critical use cases requiring reliability and performan
 ## Disclaimer
 
 This tool is intended for legitimate repository collection and analysis purposes. Users are responsible for compliance with GitHub's Terms of Service, rate limiting policies, and applicable copyright laws. The tool respects repository access permissions and does not bypass any security mechanisms. Always use a personal access token to avoid rate limiting and ensure proper attribution of API usage.
-```
