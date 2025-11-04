@@ -1,324 +1,391 @@
-# Magnet: Industrial Strength GitHub Repository Scraper
+# Magnet: The Rust-Based GitHub Package Manager
 
-**Magnet** is a high-performance, parallel GitHub repository scraper designed for critical scenarios requiring rapid, large-scale repository acquisition and analysis. Built with Rust's async capabilities, Magnet provides robust, fault-tolerant repository collection with advanced filtering and concurrent download mechanisms.
-
-## Critical Use Cases
-
-- **Emergency Code Recovery**: Rapid repository backup during critical infrastructure incidents
-- **Disaster Response**: Quick preservation of essential codebases during organizational disruptions
-- **Research Data Collection**: Systematic acquisition of repositories for computational research
-- **Compliance Auditing**: Bulk repository analysis for security and compliance assessments
-- **Code Migration**: Efficient transfer of multiple repositories during platform migrations
-- **Forensic Analysis**: Comprehensive repository collection for digital forensics investigations
+**Magnet** is a powerful, cross-platform package manager for installing, managing, and downloading GitHub releases and repositories. Built with Rust's async capabilities, Magnet provides a seamless experience for working with GitHub-hosted software.
 
 ## Key Features
 
-### Advanced Filtering System
-- **Language-based filtering**: Target specific programming languages
-- **Star threshold filtering**: Focus on repositories with minimum popularity metrics
-- **Size constraints**: Control repository size limits (in MB)
-- **Fork exclusion**: Option to retrieve only original repositories
-- **Regex pattern matching**: Sophisticated repository name filtering using regular expressions
-- **Multi-criteria filtering**: Combine multiple filters for precise targeting
+### Package Management
+- **Automated Installation**: Install binaries from GitHub releases with a single command
+- **Smart Binary Detection**: Automatically finds and extracts the correct binary for your platform
+- **Version Control**: Install specific versions or always get the latest release
+- **Update Management**: Update individual packages or all installed packages at once
+- **Registry System**: Track installed packages with version history and metadata
+- **Global and Local Installation**: Choose between system-wide or user-specific installations
 
-### High-Performance Architecture
-- **Concurrent downloads**: Configurable parallel processing (default: 3 concurrent operations)
-- **Async I/O operations**: Non-blocking network and file system operations
-- **Intelligent branch detection**: Automatic fallback across common branch names (main, master, develop, trunk)
-- **Robust error handling**: Graceful failure recovery with detailed error reporting
-- **Progress tracking**: Real-time download progress and statistics
-- **GitHub API token support**: Avoid rate limits with personal access tokens
+### Repository Operations
+- **Bulk Repository Download**: Clone all repositories from any GitHub user
+- **Advanced Filtering**: Filter by language, stars, size, fork status, and regex patterns
+- **Concurrent Downloads**: Configurable parallel processing for faster operations
+- **Progress Tracking**: Real-time download progress and statistics
+- **Automatic Branch Detection**: Fallback across common branch names for maximum compatibility
 
-### Enterprise-Grade Reliability
-- **Timeout management**: 5-minute timeout protection for large repositories
-- **Automatic retry logic**: Exponential backoff with up to 3 retry attempts
-- **Rate limit awareness**: Monitors and reports remaining API quota
-- **Directory structure preservation**: Maintains original repository organization
-- **Size calculation**: Accurate downloaded content measurement
-- **Thread-safe operations**: Concurrent downloads with proper synchronization
+### Developer Experience
+- **Cross-Platform**: Full support for Linux, macOS, and Windows
+- **Colored Output**: Beautiful, readable terminal interface
+- **Error Handling**: Robust error recovery with detailed error messages
+- **Rate Limit Management**: Automatic GitHub API rate limit handling
+- **Authentication Support**: Use GitHub tokens for higher rate limits
 
 ## Installation
 
-### Prerequisites
-- Rust 1.70+ with Cargo
-- Internet connectivity for GitHub API access
-- GitHub personal access token (optional but recommended)
+### Quick Install
 
-### Dependencies
-```toml
-[dependencies]
-clap = { version = "4.0", features = ["env"] }
-regex = "1.0"
-reqwest = { version = "0.11", features = ["json"] }
-serde = { version = "1.0", features = ["derive"] }
-tokio = { version = "1.0", features = ["full"] }
-zip = "0.6"
+Download the latest release and install Magnet using itself:
+
+```bash
+magnet install naseridev/magnet
 ```
 
-### Build Instructions
+### From Source
+
 ```bash
 git clone https://github.com/naseridev/magnet.git
+```
+
+```bash
 cd magnet
+```
+
+```bash
 cargo build --release
+```
+
+### Authentication (Recommended)
+
+```bash
+export GITHUB_TOKEN=your_personal_access_token
 ```
 
 ## Usage
 
-### Authentication (Recommended)
-```bash
-# Set GitHub token as environment variable
-export GITHUB_TOKEN=your_personal_access_token
+### Installing Packages
 
-# Or pass directly via command line
-./magnet username --token your_personal_access_token
+```bash
+# Install latest version
+magnet install naseridev/cortex
+
+# Install specific version
+magnet install naseridev/cortex --version v1.0.0
+
+# Install globally (system-wide)
+magnet install naseridev/cortex --global
+
+# Force reinstall
+magnet install naseridev/cortex --force
+
+# Install with authentication
+magnet install naseridev/cortex --token ghp_your_token_here
 ```
 
-### Basic Repository Scraping
+### Managing Packages
+
 ```bash
-# Download all repositories for a user
-./magnet username
+# List installed packages
+magnet list
 
-# Download with parallel processing
-./magnet username --parallel 5
+# List with detailed information
+magnet list --verbose
 
-# Download with authentication
-./magnet username --token ghp_your_token_here
+# Update specific package
+magnet update naseridev/cortex
+
+# Update all packages
+magnet update
+
+# Uninstall package
+magnet uninstall naseridev/cortex
+
+# Clean untracked binaries
+magnet clean
 ```
 
-### Advanced Filtering
+### Repository Information
+
 ```bash
-# Language-specific repositories
-./magnet username --language rust
+# Show repository details
+magnet info naseridev/cortex
 
-# High-quality repositories only
-./magnet username --min-stars 100
+# Search repositories
+magnet search cortex
 
-# Size-constrained downloads
-./magnet username --max-size 50
+# Search with limit
+magnet search cortex --limit 20
 
-# Original repositories only (exclude forks)
-./magnet username --only-original
-
-# Pattern-based filtering
-./magnet username --regex "^api-.*"
+# Search users
+magnet search naseridev --by-user
 ```
 
-### Complex Filtering Scenarios
+### Bulk Repository Download
+
 ```bash
-# Critical infrastructure code collection
-./magnet username --language go --min-stars 500 --only-original --max-size 100 --token $GITHUB_TOKEN
+# Download all repositories from a user
+magnet dump username
 
-# Emergency backup with specific patterns
-./magnet username --regex "^(core|critical|prod)" --parallel 10 --token $GITHUB_TOKEN
+# Filter by language
+magnet dump username --language rust
 
-# Research data collection
-./magnet username --language python --min-stars 50 --max-size 200 --parallel 8
+# Filter by stars
+magnet dump username --min-stars 100
 
-# Security-focused repository collection
-./magnet username --regex "(security|auth|crypto)" --language rust --min-stars 10
+# Exclude forks
+magnet dump username --only-original
 
-# Microservices architecture backup
-./magnet username --regex "service-.*|.*-api$" --only-original --max-size 50
+# Filter by size (MB)
+magnet dump username --max-size 50
 
-# Popular JavaScript libraries
-./magnet username --language javascript --min-stars 1000 --parallel 5
+# Filter by regex pattern
+magnet dump username --regex "^api-.*"
 
-# Documentation and configuration repos
-./magnet username --regex "(docs|config|setup)" --max-size 10
+# Concurrent downloads
+magnet dump username --parallel 10
+
+# Custom output directory
+magnet dump username --output ./repos
 ```
 
-### Real-World Scenarios
+### Advanced Filtering Examples
 
-#### Emergency Code Recovery
 ```bash
-# Backup critical repositories during infrastructure incident
-./magnet company-username --only-original --parallel 15 --max-size 500 --token $GITHUB_TOKEN
+# High-quality Rust projects
+magnet dump username --language rust --min-stars 500 --only-original
 
-# Focus on production-related code
-./magnet username --regex "(prod|production|deploy)" --parallel 8 --token $GITHUB_TOKEN
+# Small documentation repos
+magnet dump username --regex "(docs|config)" --max-size 10
+
+# Large-scale parallel download
+magnet dump username --parallel 15 --max-size 100
+
+# Production codebases
+magnet dump username --regex "(prod|production)" --only-original
+
+# Microservices architecture
+magnet dump username --regex "service-.*|.*-api$" --language go
 ```
 
-#### Research and Analysis
-```bash
-# Machine learning repositories for analysis
-./magnet researcher --language python --regex "(ml|ai|neural|deep)" --min-stars 20
+## Command Reference
 
-# Web framework comparison study
-./magnet username --language go --regex "(framework|web|http)" --min-stars 100
-```
+### Global Options
 
-#### Compliance and Auditing
-```bash
-# Collect repositories for security audit
-./magnet organization --language java --min-stars 5 --only-original --token $GITHUB_TOKEN
+| Option | Short | Description |
+|--------|-------|-------------|
+| `--token` | `-t` | GitHub personal access token |
+| `--verbose` | `-v` | Enable verbose output |
 
-# Focus on repositories with specific naming conventions
-./magnet username --regex "^[a-z]+-[a-z]+$" --max-size 100
-```
+### Commands
 
-## Command Line Interface
+#### `install`
+Install a package from GitHub releases
 
 | Option | Short | Description | Default |
 |--------|-------|-------------|---------|
-| `username` | - | Target GitHub username (required) | - |
-| `--token` | `-t` | GitHub personal access token | $GITHUB_TOKEN |
-| `--language` | `-l` | Filter by programming language | None |
-| `--min-stars` | `-s` | Minimum star count threshold | 0 |
-| `--max-size` | `-m` | Maximum repository size (MB) | None |
-| `--only-original` | `-o` | Exclude forked repositories | false |
-| `--regex` | `-r` | Repository name regex pattern | None |
-| `--parallel` | `-p` | Concurrent download count | 3 |
+| `package` | - | Package in format: owner/repo | Required |
+| `--version` | `-V` | Specific version tag | Latest |
+| `--global` | `-g` | Install system-wide | false |
+| `--force` | `-f` | Force reinstall | false |
 
-## Performance Characteristics
+#### `uninstall`
+Remove an installed package
 
-### Scalability Metrics
-- **Concurrent Operations**: Up to 50+ parallel downloads (system-dependent)
-- **Network Efficiency**: Persistent HTTP connections with connection pooling
-- **Memory Usage**: Minimal memory footprint with streaming downloads
-- **Error Recovery**: Individual failure isolation prevents cascade failures
-- **Retry Mechanism**: Exponential backoff with 1s base delay, up to 3 attempts
+| Option | Short | Description | Default |
+|--------|-------|-------------|---------|
+| `package` | - | Package in format: owner/repo | Required |
+| `--global` | `-g` | Uninstall from global directory | false |
+
+#### `list`
+List all installed packages
+
+| Option | Short | Description | Default |
+|--------|-------|-------------|---------|
+| `--verbose` | `-v` | Show detailed information | false |
+
+#### `update`
+Update installed packages
+
+| Option | Short | Description | Default |
+|--------|-------|-------------|---------|
+| `package` | - | Package to update (all if omitted) | None |
+| `--global` | `-g` | Update global packages | false |
+
+#### `info`
+Display repository information
+
+| Option | Short | Description | Default |
+|--------|-------|-------------|---------|
+| `package` | - | Package in format: owner/repo | Required |
+
+#### `search`
+Search for packages or users
+
+| Option | Short | Description | Default |
+|--------|-------|-------------|---------|
+| `query` | - | Search query | Required |
+| `--limit` | `-l` | Maximum results | 10 |
+| `--by-user` | `-u` | Search users instead of repos | false |
+
+#### `clean`
+Clean up untracked files
+
+| Option | Short | Description | Default |
+|--------|-------|-------------|---------|
+| `--global` | `-g` | Clean global directory | false |
+
+#### `dump`
+Bulk download repositories
+
+| Option | Short | Description | Default |
+|--------|-------|-------------|---------|
+| `username` | - | GitHub username | Required |
+| `--language` | `-l` | Filter by language | None |
+| `--min-stars` | `-s` | Minimum star count | 0 |
+| `--only-original` | `-o` | Exclude forks | false |
+| `--regex` | `-r` | Filter by regex pattern | None |
+| `--max-size` | `-m` | Maximum size in MB | None |
+| `--parallel` | `-p` | Concurrent downloads | 3 |
+| `--output` | `-d` | Output directory | username |
+
+## Installation Paths
+
+### Local Installation
+- **Linux/macOS**: `~/.magnet/bin`
+- **Windows**: `%USERPROFILE%\.magnet\bin`
+
+### Global Installation
+- **Linux/macOS**: `/usr/local/bin`
+- **Windows**: `C:\Program Files\magnet\bin`
+
+### Registry Files
+- **Local**: `~/.magnet/registry.json`
+- **Global**: `/usr/local/magnet/registry.json` (Unix) or `C:\Program Files\magnet\registry.json` (Windows)
+
+## Platform Support
+
+### Supported Architectures
+- x86_64 (amd64)
+- aarch64 (arm64)
+- x86 (i686)
+
+### Supported Archive Formats
+- `.tar.gz` / `.tgz`
+- `.zip`
+- `.exe` (Windows)
+- Raw binaries
+
+### Automatic Platform Detection
+Magnet automatically detects your OS and architecture to download the correct binary:
+- **Linux**: Prefers musl static binaries for maximum compatibility
+- **macOS**: Supports both Intel and Apple Silicon
+- **Windows**: Handles both MSVC and GNU toolchains
+
+## Performance
+
+### Scalability
+- **Concurrent Downloads**: Up to 50+ parallel operations
+- **Smart Binary Scoring**: Intelligent asset selection with 100+ scoring criteria
+- **Network Efficiency**: Persistent connections with streaming downloads
+- **Memory Optimization**: Minimal footprint with efficient buffering
 
 ### Typical Performance
-- **Small repositories** (< 1MB): ~0.5 seconds per repository
-- **Medium repositories** (1-10MB): ~2-5 seconds per repository
-- **Large repositories** (10-100MB): ~10-30 seconds per repository
-- **Network dependent**: Performance scales with available bandwidth
-- **API Rate Limits**: 5000 requests/hour with token, 60 requests/hour without
+- **Small packages** (< 1MB): ~0.5 seconds
+- **Medium packages** (1-10MB): ~2-5 seconds
+- **Large packages** (10-100MB): ~10-30 seconds
 
-## Output Structure
-
-```
-username/
-├── repository-1/
-│   ├── src/
-│   ├── README.md
-│   └── ...
-├── repository-2/
-│   ├── lib/
-│   ├── tests/
-│   └── ...
-└── repository-n/
-    └── ...
-```
+### Rate Limits
+- **Authenticated**: 5000 requests/hour
+- **Unauthenticated**: 60 requests/hour
 
 ## Error Handling
 
-### Robust Failure Management
-- **Network timeouts**: 300-second timeout with graceful degradation
-- **Rate limiting**: Automatic exponential backoff and retry mechanisms
-- **Invalid repositories**: Individual failure isolation with detailed error messages
-- **Disk space**: Graceful handling of storage constraints
-- **Permission errors**: Clear error reporting for access issues
-- **Branch detection**: Automatic fallback to alternative branch names
-- **API errors**: Proper handling of GitHub API responses
+### Automatic Retry
+- Up to 3 retry attempts with exponential backoff
+- Automatic branch fallback (main, master, develop, trunk)
+- Graceful rate limit handling
 
-### Status Reporting
-```
-Scanning repositories for: username
-Language: rust
-Min stars: 100
-Parallel: 5
+### Timeout Protection
+- 5-minute timeout for downloads
+- 2GB maximum download size
+- Safe cancellation on size limit exceeded
 
-Found 10 repositories matching criteria
+## Real-World Use Cases
 
-[1/10] repository-name (1234 KB)
-[2/10] another-repo (567 KB)
-[3/10] failed-repo FAILED: Failed to download: HTTP 404
+### Development Workflow
+```bash
+# Set up development tools
+magnet install sharkdp/fd
+magnet install sharkdp/bat
+magnet install junegunn/fzf
+magnet install naseridev/cortex
 
-Results:
-Downloaded: 8
-Failed: 2
-Total size: 150 MB
-Time: 45.32s
-Speed: 3.3 MB/s
+# Update all tools
+magnet update
 ```
 
-## Technical Implementation
+### Code Backup
+```bash
+# Backup all repositories
+magnet dump your-username --parallel 10
 
-### Architecture Overview
-- **Async Runtime**: Tokio-based asynchronous execution with full feature set
-- **HTTP Client**: reqwest with JSON support, connection pooling, and timeout management
-- **Concurrency Control**: Semaphore-based parallel execution limiting
-- **Progress Tracking**: Thread-safe progress reporting with Arc<Mutex<T>>
-- **ZIP Processing**: Efficient archive extraction with path sanitization
-- **Error Propagation**: String-based error types for Send compatibility across threads
+# Backup only important projects
+magnet dump your-username --min-stars 10 --only-original
+```
 
-### Key Implementation Details
-- **Send-safe futures**: All async operations are thread-safe for tokio::spawn
-- **Pagination**: Automatic handling of GitHub API pagination (100 repos per page)
-- **Branch fallback**: Attempts default branch, then main, master, develop, trunk
-- **Retry logic**: Exponential backoff for 403, 429 status codes
-- **Rate limit monitoring**: Warns when remaining API calls drop below 10
+### Research and Analysis
+```bash
+# Collect Rust projects
+magnet dump username --language rust --min-stars 50
 
-### Security Considerations
-- **Path Traversal Protection**: Sanitized extraction paths preventing directory traversal
-- **Resource Limits**: Configurable size and timeout constraints
-- **Rate Limiting Compliance**: Respectful API usage patterns with backoff
-- **Token Security**: Environment variable support for secure token management
-- **Error Information**: Limited error details to prevent information disclosure
-
-## Limitations and Considerations
-
-### API Constraints
-- **Rate Limiting**: 
-  - Authenticated: 5000 requests/hour
-  - Unauthenticated: 60 requests/hour
-- **Repository Access**: Limited to publicly accessible repositories
-- **Branch Availability**: Attempts multiple common branch names for maximum compatibility
-- **Pagination**: Handles up to 100 repositories per page automatically
-
-### System Requirements
-- **Disk Space**: Sufficient storage for target repositories
-- **Network Bandwidth**: Stable internet connection for optimal performance
-- **System Resources**: RAM and CPU capacity for concurrent operations
-- **File System**: Support for nested directory structures
-
-### Known Limitations
-- Does not support private repositories (requires different authentication approach)
-- Large archives (>100MB) may experience timeout on slow connections
-- Regex patterns are case-sensitive by default
-- Maximum 300-second timeout per download operation
+# Analyze popular Python libraries
+magnet dump username --language python --min-stars 1000
+```
 
 ## Troubleshooting
 
-### Common Issues
-
-**Rate Limit Exceeded**
+### Rate Limit Issues
 ```bash
-# Solution: Use personal access token
 export GITHUB_TOKEN=your_token
-./magnet username
+magnet install package --token $GITHUB_TOKEN
 ```
 
-**Download Failures**
+### Download Failures
 ```bash
-# Solution: Reduce parallel count or increase timeout
-./magnet username --parallel 2
+magnet install package --verbose
+magnet install package --parallel 2
 ```
 
-**Regex Not Matching**
+### Permission Issues
 ```bash
-# Solution: Test regex pattern separately or use case-insensitive pattern
-./magnet username --regex "(?i)pattern"
+# Install locally instead of globally
+magnet install package
+
+# Or use sudo for global installation
+sudo magnet install package --global
+```
+
+### PATH Not Updated
+**Windows**: Restart your terminal or run:
+```powershell
+$env:Path = [System.Environment]::GetEnvironmentVariable("Path","User")
+```
+
+**Unix**: Source your shell configuration:
+```bash
+source ~/.bashrc  # or ~/.zshrc
 ```
 
 ## Contributing
 
-This tool is designed for critical use cases requiring reliability and performance. Contributions should focus on:
-- Enhanced error handling and recovery mechanisms
-- Performance optimizations for large-scale operations
-- Additional filtering capabilities for specialized use cases
-- Improved progress reporting and monitoring features
-- Better rate limit handling and retry strategies
-- Support for GitHub Enterprise instances
-
-### Development Guidelines
-- Maintain thread-safe operations for concurrent execution
-- Use String-based errors for Send compatibility
-- Follow Rust async best practices with tokio
-- Add comprehensive error handling for all network operations
-- Test with various network conditions and rate limits
+Contributions are welcome! Focus areas:
+- Enhanced binary detection algorithms
+- Additional archive format support
+- Performance optimizations
+- Cross-platform compatibility improvements
+- Better error messages and user guidance
 
 ## Disclaimer
 
-This tool is intended for legitimate repository collection and analysis purposes. Users are responsible for compliance with GitHub's Terms of Service, rate limiting policies, and applicable copyright laws. The tool respects repository access permissions and does not bypass any security mechanisms. Always use a personal access token to avoid rate limiting and ensure proper attribution of API usage.
+This tool is intended for legitimate software installation and repository management. Users are responsible for:
+- Compliance with GitHub's Terms of Service
+- Respecting rate limits and API usage policies
+- Following applicable copyright and licensing laws
+- Proper authentication and security practices
+
+Always use a GitHub personal access token to avoid rate limiting and ensure proper API usage attribution.
