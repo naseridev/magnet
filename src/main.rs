@@ -7,7 +7,6 @@ use std::io::copy;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tokio;
 use tokio::sync::{Mutex, Semaphore};
 use zip::ZipArchive;
 
