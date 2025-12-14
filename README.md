@@ -58,7 +58,11 @@ zip = "0.6"
 ### Build Instructions
 ```bash
 git clone https://github.com/naseridev/magnet.git
+```
+```bash
 cd magnet
+```
+```bash
 cargo build --release
 ```
 
